@@ -112,9 +112,12 @@ def dashboard():
 {"".join(f'<tr><td class="key-green">{k[0]}</td><td>{k[1]}</td><td style="font-size:10px;">{k[2]}</td><td>{"<span style=color:#ffaa00>USED</span>" if k[3] else "<span style=color:#00ff88>FREE</span>"}</td><td><button class="btn btn-copy" style="padding:5px 10px;font-size:10px;width:auto;" onclick="copyKey(\'{k[0]}\')">COPY</button></td></tr>' for k in keys)}
 </table></div>
 <a href="/logout" class="btn btn-danger">🚪 ĐĂNG XUẤT</a></div>
+
 <script>
 function showToast(m){{var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}}
+
 function copyKey(k){{navigator.clipboard.writeText(k).then(()=>showToast("✅ Đã copy: "+k))}}
+
 function createKeys(){{
     var p = document.getElementById("pkg").value;
     var q = parseInt(document.getElementById("qty").value);
@@ -172,35 +175,61 @@ function createKeys(){{
 }}
 </script></body></html>''',tv=tv,uv=uv,keys=keys)
 
+
 @app.route('/api/create', methods=['POST'])
 def api_create():
-    if not session.get('admin'): return jsonify({"error":"Unauthorized"}),401
-    data = request.json
-    pkg = data.get('package','1day')
-    qty = min(int(data.get('quantity',1)),100)
-    if pkg not in PACKAGES: return jsonify({"error":"Sai gói!"}),400
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    keys = []
-    for _ in range(qty):
-        key = gen_key()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        expiry = None
-        try:
-    c.execute(
-        "INSERT INTO vip_keys(key_code,package,created_at,expiry) VALUES(?,?,?,?)",
-        (key, pkg, now, expiry)
-    )
-    keys.append({
-        "key": key,
-        "expiry": expiry,
-        "package": pkg
-    })
-except sqlite3.IntegrityError:
-    continue
-    conn.commit()
-    conn.close()
-    return jsonify({"keys":keys,"count":len(keys)})
+    if not session.get('admin'):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        pkg = data.get('package', '1day')
+        qty = int(data.get('quantity', 1))
+
+        if pkg not in PACKAGES:
+            return jsonify({"error": "Sai gói!"}), 400
+
+        if qty < 1 or qty > 100:
+            return jsonify({"error": "Số lượng phải từ 1 đến 100!"}), 400
+
+        conn = sqlite3.connect(DB)
+        c = conn.cursor()
+        keys = []
+
+        for _ in range(qty):
+            key = gen_key()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            expiry = None
+
+            try:
+                c.execute(
+                    "INSERT INTO vip_keys(key_code,package,created_at,expiry) VALUES(?,?,?,?)",
+                    (key, pkg, now, expiry)
+                )
+
+                keys.append({
+                    "key": key,
+                    "expiry": expiry,
+                    "package": pkg
+                })
+
+            except sqlite3.IntegrityError:
+                continue
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "keys": keys,
+            "count": len(keys)
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e)
+        }), 500
+
 
 @app.route('/api/verify', methods=['POST'])
 def api_verify():
@@ -230,7 +259,6 @@ def api_verify():
         conn.close()
         return jsonify({"valid": False, "reason": "Key đã dùng thiết bị khác!"})
     
-    # Lần đầu kích hoạt
     if not used:
         days = PACKAGES[pkg]["days"]
         activated_at = datetime.now()
@@ -254,7 +282,6 @@ def api_verify():
             "message": "✅ Key VIP hợp lệ!"
         })
     
-    # Key đã kích hoạt
     if not expiry:
         conn.close()
         return jsonify({"valid": False, "reason": "Key không có thời hạn!"})
@@ -276,7 +303,8 @@ def api_verify():
         "message": "✅ Key VIP hợp lệ!"
     })
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
