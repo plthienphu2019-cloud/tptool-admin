@@ -23,14 +23,19 @@ def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS vip_keys(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, key_code TEXT UNIQUE,
-        package TEXT, created_at TEXT, expiry TEXT,
-        device_id TEXT DEFAULT '', is_used INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0)''')
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        key_code TEXT UNIQUE,
+        package TEXT, 
+        created_at TEXT, 
+        expiry TEXT,
+        device_id TEXT DEFAULT '', 
+        is_used INTEGER DEFAULT 0, 
+        is_banned INTEGER DEFAULT 0)''')
     conn.commit()
     conn.close()
 
 def gen_key():
-    return f"TPV-{''.join(random.choices(string.ascii_uppercase+string.digits,k=5))}"
+    return f"TPV-{''.join(random.choices(string.ascii_uppercase+string.digits, k=5))}"
 
 CSS = '''<style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -76,13 +81,15 @@ def login():
 
 @app.route('/login', methods=['POST'])
 def login_post():
-    if request.form.get('username')==ADMIN_USER and request.form.get('password')==ADMIN_PASS:
-        session['admin']=True; return redirect('/dashboard')
+    if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
+        session['admin'] = True
+        return redirect('/dashboard')
     return redirect('/?error=1')
 
 @app.route('/logout')
 def logout():
-    session.pop('admin',None); return redirect('/')
+    session.pop('admin', None)
+    return redirect('/')
 
 @app.route('/dashboard')
 def dashboard():
@@ -90,11 +97,11 @@ def dashboard():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM vip_keys WHERE is_banned=0")
-    tv=c.fetchone()[0]
+    tv = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM vip_keys WHERE is_used=1 AND is_banned=0")
-    uv=c.fetchone()[0]
-    c.execute("SELECT key_code,package,expiry,is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
-    keys=c.fetchall()
+    uv = c.fetchone()[0]
+    c.execute("SELECT key_code, package, expiry, is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
+    keys = c.fetchall()
     conn.close()
     return render_template_string(f'''<!DOCTYPE html><html><head><title>Admin VIP</title><meta name="viewport" content="width=device-width,initial-scale=1.0">{CSS}</head><body>
 <div class="toast" id="toast"></div><div class="container">
@@ -116,87 +123,117 @@ def dashboard():
 function showToast(m){{var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}}
 function copyKey(k){{navigator.clipboard.writeText(k).then(()=>showToast("✅ Đã copy: "+k))}}
 function createKeys(){{var p=document.getElementById("pkg").value;var q=document.getElementById("qty").value;fetch("/api/create",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{package:p,quantity:parseInt(q)}})}}).then(r=>r.json()).then(d=>{{var b=document.getElementById("resultBox");b.style.display="block";b.innerHTML=d.keys.map(k=>'<div class="result-item"><span style="color:#00ff88;">'+k.key+'</span><span style="font-size:10px;">'+k.expiry+'</span><button class="btn btn-copy" style="padding:4px 8px;font-size:10px;width:auto;" onclick="copyKey(\''+k.key+'\')">COPY</button></div>').join("");showToast("✅ Đã tạo "+d.keys.length+" key!");setTimeout(()=>location.reload(),3000)}})}}
-</script></body></html>''',tv=tv,uv=uv,keys=keys)
+</script></body></html>''', tv=tv, uv=uv, keys=keys)
 
 @app.route('/api/create', methods=['POST'])
 def api_create():
-    if not session.get('admin'): return jsonify({"error":"Unauthorized"}),401
+    if not session.get('admin'): 
+        return jsonify({"error": "Unauthorized"}), 401
+    
     data = request.json
-    pkg = data.get('package','1day')
-    qty = min(int(data.get('quantity',1)),100)
-    if pkg not in PACKAGES: return jsonify({"error":"Sai gói!"}),400
-    days = PACKAGES[pkg]['days']
+    pkg = data.get('package', '1day')
+    qty = min(int(data.get('quantity', 1)), 100)
+    
+    if pkg not in PACKAGES:
+        return jsonify({"error": "Sai gói!"}), 400
+    
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     keys = []
+    
     for _ in range(qty):
         key = gen_key()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-exp = None
         try:
-            c.execute("INSERT INTO vip_keys(key_code,package,created_at,expiry) VALUES(?,?,?,?)",(key,pkg,now,exp))
-            keys.append({"key":key,"expiry":exp,"package":pkg})
-        except:continue
+            c.execute(
+                "INSERT INTO vip_keys(key_code, package, created_at, expiry) VALUES(?,?,?,?)",
+                (key, pkg, now, None)
+            )
+            keys.append({"key": key, "package": pkg, "expiry": None})
+        except:
+            continue
+    
     conn.commit()
     conn.close()
-    return jsonify({"keys":keys,"count":len(keys)})
+    return jsonify({"keys": keys, "count": len(keys)})
 
 @app.route('/api/verify', methods=['POST'])
 def api_verify():
     data = request.json
-    key_code = data.get('key_code','').strip().upper()
-    device_id = data.get('device_id','unknown')
+    key_code = data.get('key_code', '').strip().upper()
+    device_id = data.get('device_id', 'unknown')
+    
     if not key_code:
-        return jsonify({"valid":False,"reason":"Nhập key!"})
+        return jsonify({"valid": False, "reason": "Nhập key!"})
+    
     conn = sqlite3.connect(DB)
     c = conn.cursor()
-    c.execute("SELECT * FROM vip_keys WHERE key_code=?",(key_code,))
+    c.execute("SELECT * FROM vip_keys WHERE key_code=?", (key_code,))
     k = c.fetchone()
+    
     if not k:
         conn.close()
-        return jsonify({"valid":False,"reason":"Key không tồn tại!"})
-    _,_,pkg,_,expiry,dev,used,banned = k
-    if banned: conn.close(); return jsonify({"valid":False,"reason":"Key bị khóa!"})
-    if used and dev and dev != device_id:
-    conn.close()
-    return jsonify({
-        "valid": False,
-        "reason": "Key đã dùng thiết bị khác!"
-    })
-
-# Lần đầu kích hoạt: bắt đầu tính thời gian từ lúc khách nhập key
-if not used:
+        return jsonify({"valid": False, "reason": "Key không tồn tại!"})
+    
+    _, _, pkg, created_at, expiry, dev, used, banned = k
+    
+    if banned:
+        conn.close()
+        return jsonify({"valid": False, "reason": "Key bị khóa!"})
+    
+    # Lấy số ngày từ PACKAGES
+    days = PACKAGES[pkg]["days"]
+    duration_hours = days * 24
+    
+    # Nếu key đã sử dụng
+    if used:
+        if dev and dev != device_id:
+            conn.close()
+            return jsonify({"valid": False, "reason": "Key đã dùng thiết bị khác!"})
+        
+        if not expiry:
+            conn.close()
+            return jsonify({"valid": False, "reason": "Key không có thời hạn!"})
+        
+        exp_dt = datetime.strptime(expiry, "%Y-%m-%d %H:%M:%S")
+        if exp_dt < datetime.now():
+            conn.close()
+            return jsonify({"valid": False, "reason": "Key đã hết hạn!"})
+        
+        conn.close()
+        return jsonify({
+            "valid": True,
+            "expiry": expiry,
+            "package": pkg,
+            "duration": duration_hours,
+            "is_vip": True,
+            "is_forever": pkg == 'forever',
+            "message": "✅ Key VIP hợp lệ!"
+        })
+    
+    # Lần đầu kích hoạt
     activated_at = datetime.now()
-    expiry_dt = activated_at + timedelta(
-        days=PACKAGES[pkg]["days"]
-    )
+    expiry_dt = activated_at + timedelta(days=days)
     expiry = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
-
+    
     c.execute(
         "UPDATE vip_keys SET device_id=?, is_used=1, expiry=? WHERE key_code=?",
         (device_id, expiry, key_code)
     )
     conn.commit()
-
-else:
-    # Key đã kích hoạt trước đó → giữ nguyên hạn
-    if not expiry:
-        conn.close()
-        return jsonify({
-            "valid": False,
-            "reason": "Key không có thời hạn!"
-        })
-
-    if datetime.strptime(expiry, "%Y-%m-%d %H:%M:%S") < datetime.now():
-        conn.close()
-        return jsonify({
-            "valid": False,
-            "reason": "Key hết hạn!"
-        })
     conn.close()
-    return jsonify({"valid":True,"expiry":expiry,"type":"vip","package":pkg,"message":"✅ Key VIP hợp lệ!"})
+    
+    return jsonify({
+        "valid": True,
+        "expiry": expiry,
+        "package": pkg,
+        "duration": duration_hours,
+        "is_vip": True,
+        "is_forever": pkg == 'forever',
+        "message": "✅ Key VIP hợp lệ!"
+    })
 
-if __name__=='__main__':
+if __name__ == '__main__':
     init_db()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
