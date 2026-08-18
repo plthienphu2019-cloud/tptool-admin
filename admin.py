@@ -23,19 +23,14 @@ def init_db():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS vip_keys(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        key_code TEXT UNIQUE,
-        package TEXT, 
-        created_at TEXT, 
-        expiry TEXT,
-        device_id TEXT DEFAULT '', 
-        is_used INTEGER DEFAULT 0, 
-        is_banned INTEGER DEFAULT 0)''')
+        id INTEGER PRIMARY KEY AUTOINCREMENT, key_code TEXT UNIQUE,
+        package TEXT, created_at TEXT, expiry TEXT,
+        device_id TEXT DEFAULT '', is_used INTEGER DEFAULT 0, is_banned INTEGER DEFAULT 0)''')
     conn.commit()
     conn.close()
 
 def gen_key():
-    return f"TPV-{''.join(random.choices(string.ascii_uppercase+string.digits, k=5))}"
+    return f"TPV-{''.join(random.choices(string.ascii_uppercase+string.digits,k=5))}"
 
 CSS = '''<style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -50,10 +45,13 @@ h3{color:#ff00ff;margin-bottom:15px}
 .btn-vip{background:linear-gradient(135deg,#ff00ff,#cc00cc);color:#fff}
 .btn-copy{background:linear-gradient(135deg,#00aaff,#0077cc);color:#fff}
 .btn-danger{background:linear-gradient(135deg,#ff4444,#cc0000);color:#fff}
+.btn-delete{background:linear-gradient(135deg,#ff3333,#990000);color:#fff;padding:5px 10px;font-size:10px;width:auto;display:inline-block;margin:0}
+.btn-delete:hover{background:linear-gradient(135deg,#ff0000,#660000)}
 .input-field{width:100%;padding:14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.2);border-radius:50px;color:#fff;font-family:'Orbitron',sans-serif;font-size:13px;outline:none;margin:7px 0}
 .input-field:focus{border-color:#ff00ff}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#00ff88;color:#000;padding:12px 25px;border-radius:50px;font-weight:700;z-index:9999;opacity:0;pointer-events:none;transition:opacity .3s}
 .toast.show{opacity:1}
+.toast-error{background:#ff4444;color:#fff}
 table{width:100%;border-collapse:collapse;font-size:10px;margin-top:15px}
 th{background:rgba(255,0,255,.1);padding:10px;color:#ff00ff;text-align:left}
 td{padding:8px;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -81,15 +79,13 @@ def login():
 
 @app.route('/login', methods=['POST'])
 def login_post():
-    if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
-        session['admin'] = True
-        return redirect('/dashboard')
+    if request.form.get('username')==ADMIN_USER and request.form.get('password')==ADMIN_PASS:
+        session['admin']=True; return redirect('/dashboard')
     return redirect('/?error=1')
 
 @app.route('/logout')
 def logout():
-    session.pop('admin', None)
-    return redirect('/')
+    session.pop('admin',None); return redirect('/')
 
 @app.route('/dashboard')
 def dashboard():
@@ -97,11 +93,11 @@ def dashboard():
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM vip_keys WHERE is_banned=0")
-    tv = c.fetchone()[0]
+    tv=c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM vip_keys WHERE is_used=1 AND is_banned=0")
-    uv = c.fetchone()[0]
-    c.execute("SELECT key_code, package, expiry, is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
-    keys = c.fetchall()
+    uv=c.fetchone()[0]
+    c.execute("SELECT id, key_code, package, expiry, is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
+    keys=c.fetchall()
     conn.close()
     return render_template_string(f'''<!DOCTYPE html><html><head><title>Admin VIP</title><meta name="viewport" content="width=device-width,initial-scale=1.0">{CSS}</head><body>
 <div class="toast" id="toast"></div><div class="container">
@@ -115,56 +111,65 @@ def dashboard():
 <button class="btn btn-vip" onclick="createKeys()">💎 TẠO KEY</button>
 <div class="result-box" id="resultBox" style="display:none;"></div></div>
 <div class="card"><h3>📋 DANH SÁCH KEY</h3>
-<table><tr><th>KEY</th><th>GÓI</th><th>HẾT HẠN</th><th>TT</th><th>COPY</th></tr>
-{"".join(f'<tr><td class="key-green">{k[0]}</td><td>{k[1]}</td><td style="font-size:10px;">{k[2]}</td><td>{"<span style=color:#ffaa00>USED</span>" if k[3] else "<span style=color:#00ff88>FREE</span>"}</td><td><button class="btn btn-copy" style="padding:5px 10px;font-size:10px;width:auto;" onclick="copyKey(\'{k[0]}\')">COPY</button></td></tr>' for k in keys)}
+<table><tr><th>KEY</th><th>GÓI</th><th>HẾT HẠN</th><th>TT</th><th>COPY</th><th>XÓA</th></tr>
+{"".join(f'<tr><td class="key-green">{k[1]}</td><td>{k[2]}</td><td style="font-size:10px;">{k[3]}</td><td>{"<span style=color:#ffaa00>USED</span>" if k[4] else "<span style=color:#00ff88>FREE</span>"}</td><td><button class="btn btn-copy" style="padding:5px 10px;font-size:10px;width:auto;" onclick="copyKey(\'{k[1]}\')">COPY</button></td><td><button class="btn btn-delete" onclick="deleteKey({k[0]}, \'{k[1]}\')">🗑️</button></td></tr>' for k in keys)}
 </table></div>
 <a href="/logout" class="btn btn-danger">🚪 ĐĂNG XUẤT</a></div>
 <script>
-function showToast(m){{var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}}
+function showToast(m, isError=false){{var t=document.getElementById("toast");t.textContent=m;t.className="toast"+(isError?" toast-error":"");t.classList.add("show");setTimeout(()=>t.classList.remove("show"),3000)}}
 function copyKey(k){{navigator.clipboard.writeText(k).then(()=>showToast("✅ Đã copy: "+k))}}
+function deleteKey(id, key){{if(confirm("Bạn có chắc muốn xóa key: "+key+"?")){{fetch("/api/delete",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{id:id}})}}).then(r=>r.json()).then(d=>{{if(d.success){{showToast("✅ Đã xóa key: "+key);setTimeout(()=>location.reload(),1500)}}else{{showToast("❌ "+d.error,true)}}}})}}}}
 function createKeys(){{var p=document.getElementById("pkg").value;var q=document.getElementById("qty").value;fetch("/api/create",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{package:p,quantity:parseInt(q)}})}}).then(r=>r.json()).then(d=>{{var b=document.getElementById("resultBox");b.style.display="block";b.innerHTML=d.keys.map(k=>'<div class="result-item"><span style="color:#00ff88;">'+k.key+'</span><span style="font-size:10px;">'+k.expiry+'</span><button class="btn btn-copy" style="padding:4px 8px;font-size:10px;width:auto;" onclick="copyKey(\''+k.key+'\')">COPY</button></div>').join("");showToast("✅ Đã tạo "+d.keys.length+" key!");setTimeout(()=>location.reload(),3000)}})}}
-</script></body></html>''', tv=tv, uv=uv, keys=keys)
+</script></body></html>''',tv=tv,uv=uv,keys=keys)
 
 @app.route('/api/create', methods=['POST'])
 def api_create():
-    if not session.get('admin'): 
-        return jsonify({"error": "Unauthorized"}), 401
-    
+    if not session.get('admin'): return jsonify({"error":"Unauthorized"}),401
     data = request.json
-    pkg = data.get('package', '1day')
-    qty = min(int(data.get('quantity', 1)), 100)
-    
-    if pkg not in PACKAGES:
-        return jsonify({"error": "Sai gói!"}), 400
-    
+    pkg = data.get('package','1day')
+    qty = min(int(data.get('quantity',1)),100)
+    if pkg not in PACKAGES: return jsonify({"error":"Sai gói!"}),400
     conn = sqlite3.connect(DB)
     c = conn.cursor()
     keys = []
-    
     for _ in range(qty):
         key = gen_key()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        expiry = None
         try:
-            c.execute(
-                "INSERT INTO vip_keys(key_code, package, created_at, expiry) VALUES(?,?,?,?)",
-                (key, pkg, now, None)
-            )
-            keys.append({"key": key, "package": pkg, "expiry": None})
-        except:
-            continue
-    
+            c.execute("INSERT INTO vip_keys(key_code,package,created_at,expiry) VALUES(?,?,?,?)",(key,pkg,now,expiry))
+            keys.append({"key":key,"expiry":expiry,"package":pkg})
+        except:continue
     conn.commit()
     conn.close()
-    return jsonify({"keys": keys, "count": len(keys)})
+    return jsonify({"keys":keys,"count":len(keys)})
+
+@app.route('/api/delete', methods=['POST'])
+def api_delete():
+    if not session.get('admin'): return jsonify({"error":"Unauthorized"}),401
+    data = request.json
+    key_id = data.get('id')
+    if not key_id:
+        return jsonify({"success":False,"error":"Thiếu ID key!"}),400
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+    c.execute("DELETE FROM vip_keys WHERE id=?", (key_id,))
+    conn.commit()
+    affected = conn.total_changes
+    conn.close()
+    if affected > 0:
+        return jsonify({"success":True,"message":"Đã xóa key!"})
+    else:
+        return jsonify({"success":False,"error":"Key không tồn tại!"}),404
 
 @app.route('/api/verify', methods=['POST'])
 def api_verify():
     data = request.json
-    key_code = data.get('key_code', '').strip().upper()
-    device_id = data.get('device_id', 'unknown')
+    key_code = data.get('key_code','').strip().upper()
+    device_id = data.get('device_id','unknown')
     
     if not key_code:
-        return jsonify({"valid": False, "reason": "Nhập key!"})
+        return jsonify({"valid":False,"reason":"Nhập key!"})
     
     conn = sqlite3.connect(DB)
     c = conn.cursor()
@@ -173,19 +178,17 @@ def api_verify():
     
     if not k:
         conn.close()
-        return jsonify({"valid": False, "reason": "Key không tồn tại!"})
+        return jsonify({"valid":False,"reason":"Key không tồn tại!"})
     
-    _, _, pkg, created_at, expiry, dev, used, banned = k
+    _, _, pkg, _, expiry, dev, used, banned = k
     
     if banned:
         conn.close()
-        return jsonify({"valid": False, "reason": "Key bị khóa!"})
+        return jsonify({"valid":False,"reason":"Key bị khóa!"})
     
-    # Lấy số ngày từ PACKAGES
     days = PACKAGES[pkg]["days"]
     duration_hours = days * 24
     
-    # Nếu key đã sử dụng
     if used:
         if dev and dev != device_id:
             conn.close()
@@ -211,7 +214,6 @@ def api_verify():
             "message": "✅ Key VIP hợp lệ!"
         })
     
-    # Lần đầu kích hoạt
     activated_at = datetime.now()
     expiry_dt = activated_at + timedelta(days=days)
     expiry = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -233,7 +235,7 @@ def api_verify():
         "message": "✅ Key VIP hợp lệ!"
     })
 
-if __name__ == '__main__':
+if __name__=='__main__':
     init_db()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
