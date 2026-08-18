@@ -45,13 +45,10 @@ h3{color:#ff00ff;margin-bottom:15px}
 .btn-vip{background:linear-gradient(135deg,#ff00ff,#cc00cc);color:#fff}
 .btn-copy{background:linear-gradient(135deg,#00aaff,#0077cc);color:#fff}
 .btn-danger{background:linear-gradient(135deg,#ff4444,#cc0000);color:#fff}
-.btn-delete{background:linear-gradient(135deg,#ff3333,#990000);color:#fff;padding:5px 10px;font-size:10px;width:auto;display:inline-block;margin:0}
-.btn-delete:hover{background:linear-gradient(135deg,#ff0000,#660000)}
 .input-field{width:100%;padding:14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.2);border-radius:50px;color:#fff;font-family:'Orbitron',sans-serif;font-size:13px;outline:none;margin:7px 0}
 .input-field:focus{border-color:#ff00ff}
 .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#00ff88;color:#000;padding:12px 25px;border-radius:50px;font-weight:700;z-index:9999;opacity:0;pointer-events:none;transition:opacity .3s}
 .toast.show{opacity:1}
-.toast-error{background:#ff4444;color:#fff}
 table{width:100%;border-collapse:collapse;font-size:10px;margin-top:15px}
 th{background:rgba(255,0,255,.1);padding:10px;color:#ff00ff;text-align:left}
 td{padding:8px;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -96,7 +93,7 @@ def dashboard():
     tv=c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM vip_keys WHERE is_used=1 AND is_banned=0")
     uv=c.fetchone()[0]
-    c.execute("SELECT id, key_code, package, expiry, is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
+    c.execute("SELECT key_code,package,expiry,is_used FROM vip_keys WHERE is_banned=0 ORDER BY id DESC LIMIT 50")
     keys=c.fetchall()
     conn.close()
     return render_template_string(f'''<!DOCTYPE html><html><head><title>Admin VIP</title><meta name="viewport" content="width=device-width,initial-scale=1.0">{CSS}</head><body>
@@ -111,14 +108,13 @@ def dashboard():
 <button class="btn btn-vip" onclick="createKeys()">💎 TẠO KEY</button>
 <div class="result-box" id="resultBox" style="display:none;"></div></div>
 <div class="card"><h3>📋 DANH SÁCH KEY</h3>
-<table><tr><th>KEY</th><th>GÓI</th><th>HẾT HẠN</th><th>TT</th><th>COPY</th><th>XÓA</th></tr>
-{"".join(f'<tr><td class="key-green">{k[1]}</td><td>{k[2]}</td><td style="font-size:10px;">{k[3]}</td><td>{"<span style=color:#ffaa00>USED</span>" if k[4] else "<span style=color:#00ff88>FREE</span>"}</td><td><button class="btn btn-copy" style="padding:5px 10px;font-size:10px;width:auto;" onclick="copyKey(\'{k[1]}\')">COPY</button></td><td><button class="btn btn-delete" onclick="deleteKey({k[0]}, \'{k[1]}\')">🗑️</button></td></tr>' for k in keys)}
+<table><tr><th>KEY</th><th>GÓI</th><th>HẾT HẠN</th><th>TT</th><th>COPY</th></tr>
+{"".join(f'<tr><td class="key-green">{k[0]}</td><td>{k[1]}</td><td style="font-size:10px;">{k[2]}</td><td>{"<span style=color:#ffaa00>USED</span>" if k[3] else "<span style=color:#00ff88>FREE</span>"}</td><td><button class="btn btn-copy" style="padding:5px 10px;font-size:10px;width:auto;" onclick="copyKey(\'{k[0]}\')">COPY</button></td></tr>' for k in keys)}
 </table></div>
 <a href="/logout" class="btn btn-danger">🚪 ĐĂNG XUẤT</a></div>
 <script>
-function showToast(m, isError=false){{var t=document.getElementById("toast");t.textContent=m;t.className="toast"+(isError?" toast-error":"");t.classList.add("show");setTimeout(()=>t.classList.remove("show"),3000)}}
+function showToast(m){{var t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}}
 function copyKey(k){{navigator.clipboard.writeText(k).then(()=>showToast("✅ Đã copy: "+k))}}
-function deleteKey(id, key){{if(confirm("Bạn có chắc muốn xóa key: "+key+"?")){{fetch("/api/delete",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{id:id}})}}).then(r=>r.json()).then(d=>{{if(d.success){{showToast("✅ Đã xóa key: "+key);setTimeout(()=>location.reload(),1500)}}else{{showToast("❌ "+d.error,true)}}}})}}}}
 function createKeys(){{var p=document.getElementById("pkg").value;var q=document.getElementById("qty").value;fetch("/api/create",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify({{package:p,quantity:parseInt(q)}})}}).then(r=>r.json()).then(d=>{{var b=document.getElementById("resultBox");b.style.display="block";b.innerHTML=d.keys.map(k=>'<div class="result-item"><span style="color:#00ff88;">'+k.key+'</span><span style="font-size:10px;">'+k.expiry+'</span><button class="btn btn-copy" style="padding:4px 8px;font-size:10px;width:auto;" onclick="copyKey(\''+k.key+'\')">COPY</button></div>').join("");showToast("✅ Đã tạo "+d.keys.length+" key!");setTimeout(()=>location.reload(),3000)}})}}
 </script></body></html>''',tv=tv,uv=uv,keys=keys)
 
@@ -144,24 +140,6 @@ def api_create():
     conn.close()
     return jsonify({"keys":keys,"count":len(keys)})
 
-@app.route('/api/delete', methods=['POST'])
-def api_delete():
-    if not session.get('admin'): return jsonify({"error":"Unauthorized"}),401
-    data = request.json
-    key_id = data.get('id')
-    if not key_id:
-        return jsonify({"success":False,"error":"Thiếu ID key!"}),400
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
-    c.execute("DELETE FROM vip_keys WHERE id=?", (key_id,))
-    conn.commit()
-    affected = conn.total_changes
-    conn.close()
-    if affected > 0:
-        return jsonify({"success":True,"message":"Đã xóa key!"})
-    else:
-        return jsonify({"success":False,"error":"Key không tồn tại!"}),404
-
 @app.route('/api/verify', methods=['POST'])
 def api_verify():
     data = request.json
@@ -186,50 +164,51 @@ def api_verify():
         conn.close()
         return jsonify({"valid":False,"reason":"Key bị khóa!"})
     
-    days = PACKAGES[pkg]["days"]
-    duration_hours = days * 24
-    
-    if used:
-        if dev and dev != device_id:
-            conn.close()
-            return jsonify({"valid": False, "reason": "Key đã dùng thiết bị khác!"})
-        
-        if not expiry:
-            conn.close()
-            return jsonify({"valid": False, "reason": "Key không có thời hạn!"})
-        
-        exp_dt = datetime.strptime(expiry, "%Y-%m-%d %H:%M:%S")
-        if exp_dt < datetime.now():
-            conn.close()
-            return jsonify({"valid": False, "reason": "Key đã hết hạn!"})
-        
+    if used and dev and dev != device_id:
         conn.close()
+        return jsonify({"valid": False, "reason": "Key đã dùng thiết bị khác!"})
+    
+    # Lần đầu kích hoạt
+    if not used:
+        days = PACKAGES[pkg]["days"]
+        activated_at = datetime.now()
+        expiry_dt = activated_at + timedelta(days=days)
+        expiry = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        c.execute(
+            "UPDATE vip_keys SET device_id=?, is_used=1, expiry=? WHERE key_code=?",
+            (device_id, expiry, key_code)
+        )
+        conn.commit()
+        conn.close()
+        
         return jsonify({
             "valid": True,
             "expiry": expiry,
             "package": pkg,
-            "duration": duration_hours,
+            "duration": days * 24,
             "is_vip": True,
             "is_forever": pkg == 'forever',
             "message": "✅ Key VIP hợp lệ!"
         })
     
-    activated_at = datetime.now()
-    expiry_dt = activated_at + timedelta(days=days)
-    expiry = expiry_dt.strftime("%Y-%m-%d %H:%M:%S")
+    # Key đã kích hoạt
+    if not expiry:
+        conn.close()
+        return jsonify({"valid": False, "reason": "Key không có thời hạn!"})
     
-    c.execute(
-        "UPDATE vip_keys SET device_id=?, is_used=1, expiry=? WHERE key_code=?",
-        (device_id, expiry, key_code)
-    )
-    conn.commit()
+    exp_dt = datetime.strptime(expiry, "%Y-%m-%d %H:%M:%S")
+    if exp_dt < datetime.now():
+        conn.close()
+        return jsonify({"valid": False, "reason": "Key đã hết hạn!"})
+    
     conn.close()
-    
+    days = PACKAGES[pkg]["days"]
     return jsonify({
         "valid": True,
         "expiry": expiry,
         "package": pkg,
-        "duration": duration_hours,
+        "duration": days * 24,
         "is_vip": True,
         "is_forever": pkg == 'forever',
         "message": "✅ Key VIP hợp lệ!"
