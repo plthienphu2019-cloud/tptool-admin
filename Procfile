@@ -1,1 +1,1 @@
-web: python admin.py
+web: gunicorn admin:app
